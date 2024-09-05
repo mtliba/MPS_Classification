@@ -1,0 +1,17 @@
+program: src/train.py  # The script to run for each experiment
+method: bayes  # Optimization method: grid, random, or bayes
+metric:
+  name: val_loss  # Metric to optimize
+  goal: minimize  # Goal: minimize or maximize the metric
+parameters:
+  batch_size:
+    values: [8, 16, 32]  # List of possible values for batch size
+  learning_rate:
+    min: 1e-6
+    max: 1e-3  # Range for learning rate
+  epochs:
+    values: [20, 40, 60]  # List of possible values for epochs
+  model_name:
+    values: ['vit_small_softmax', 'resnet_small_softmax', 'efficientnet_small_softmax']
+  patience:
+    values: [3, 5, 7]  # Different patience values for early stopping

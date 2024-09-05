@@ -24,15 +24,15 @@ parser.add_argument('--k_folds', type=int, default=5, help='Number of folds for 
 parser.add_argument('--save_dir', type=str, default='results', help='Directory to save models and logs')
 args = parser.parse_args()
 
-# Initialize Weights & Biases
-wandb.init(project='medical_image_classification', config={
-    'batch_size': args.batch_size,
-    'num_classes': args.num_classes,
-    'epochs': args.epochs,
-    'learning_rate': args.learning_rate,
-    'patience': args.patience,
-    'k_folds': args.k_folds
-})
+# # Initialize Weights & Biases
+# wandb.init(project='medical_image_classification', config={
+#     'batch_size': args.batch_size,
+#     'num_classes': args.num_classes,
+#     'epochs': args.epochs,
+#     'learning_rate': args.learning_rate,
+#     'patience': args.patience,
+#     'k_folds': args.k_folds
+# })
 
 # Hyperparameters
 BATCH_SIZE = args.batch_size
@@ -98,16 +98,7 @@ def train_fold(model, criterion, optimizer, train_loader, val_loader, fold_idx, 
         if scheduler:
             scheduler.step(val_loss)
 
-        # Log metrics to Weights & Biases
-        wandb.log({
-            f'fold_{fold_idx}_train_loss': train_loss / len(train_loader), 
-            f'fold_{fold_idx}_val_loss': val_loss,
-            f'fold_{fold_idx}_val_accuracy': val_accuracy,
-            f'fold_{fold_idx}_val_precision': val_precision,
-            f'fold_{fold_idx}_val_recall': val_recall,
-            f'fold_{fold_idx}_val_f1': val_f1,
-            'epoch': epoch
-        })
+
 
         print(f'Fold [{fold_idx+1}/{K_FOLDS}], Epoch [{epoch+1}/{EPOCHS}], Train Loss: {train_loss/len(train_loader):.4f}, Val Loss: {val_loss:.4f}, Val Accuracy: {val_accuracy:.4f}, Val Precision: {val_precision:.4f}, Val Recall: {val_recall:.4f}, Val F1: {val_f1:.4f}')
 
@@ -124,6 +115,16 @@ def train_fold(model, criterion, optimizer, train_loader, val_loader, fold_idx, 
             print(f'Early stopping triggered after {epoch+1} epochs in fold {fold_idx+1}.')
             break
 
+    # Log metrics to Weights & Biases
+    wandb.log({
+        f'fold_{fold_idx}_train_loss': train_loss / len(train_loader), 
+        f'fold_{fold_idx}_val_loss': val_loss,
+        f'fold_{fold_idx}_val_accuracy': val_accuracy,
+        f'fold_{fold_idx}_val_precision': val_precision,
+        f'fold_{fold_idx}_val_recall': val_recall,
+        f'fold_{fold_idx}_val_f1': val_f1,
+        'epoch': epoch
+    })
     # Store the best validation metrics for this fold
     metrics_for_anova[model_name]['loss'].append(best_val_loss)
     metrics_for_anova[model_name]['accuracy'].append(val_accuracy)
@@ -165,6 +166,8 @@ def validate(model, criterion, val_loader):
     val_recall = recall_score(all_labels, all_preds, average='macro', zero_division=1)
     val_f1 = f1_score(all_labels, all_preds, average='macro', zero_division=1)
 
+
+
     return val_loss, val_accuracy, val_precision, val_recall, val_f1
 
 # Save model function
@@ -177,6 +180,17 @@ def save_model(model, model_name, fold_idx):
 
 # K-Fold Cross-Validation
 for model_name, model in models.items():
+    # Initialize a new W&B run for each model
+    wandb.init(project='medical_image_classification', name=model_name, group='model_comparison', config={
+        'batch_size': BATCH_SIZE,
+        'num_classes': NUM_CLASSES,
+        'epochs': EPOCHS,
+        'learning_rate': LEARNING_RATE,
+        'patience': PATIENCE,
+        'k_folds': K_FOLDS,
+        'model_name': model_name
+    })
+
     print(f'Training {model_name} with {K_FOLDS}-Fold Cross-Validation...')
     fold_idx = 0
     for train_idx, val_idx in kf.split(dataset):
@@ -193,8 +207,11 @@ for model_name, model in models.items():
         scheduler = StepLR(optimizer, step_size=5, gamma=0.1)  # Learning rate scheduler
 
         wandb.watch(model, log='all')
-        train_fold(model, criterion, optimizer, train_loader, val_loader, fold_idx, scheduler)
+        train_fold(model, criterion, optimizer, train_loader, val_loader, fold_idx, model_name, scheduler)
         fold_idx += 1
+
+    # Finish the W&B run for the current model
+    wandb.finish()
 
 # Save collected metrics for ANOVA test
 np.save(os.path.join(args.save_dir, 'metrics_for_anova.npy'), metrics_for_anova)
